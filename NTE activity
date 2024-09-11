@@ -1,0 +1,183 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.linear_model import LinearRegression
+import os
+
+# Set the Matplotlib backend to 'Agg' to avoid backend-related issues
+plt.switch_backend('Agg')
+
+# Load the data file
+data_path = [data path]
+data = pd.read_csv(data_path)
+
+# Extract the base name of the file (without path and extension)
+file_name = os.path.splitext(os.path.basename(data_path))[0]
+
+# Phenol concentration curve data extraction
+phenol_curve_1 = pd.to_numeric(data.iloc[0:8, 1].values, errors='coerce')  # Column B
+phenol_curve_2 = pd.to_numeric(data.iloc[0:8, 2].values, errors='coerce')  # Column C
+print("Phenol Curve Replicate 1:", phenol_curve_1)
+print("Phenol Curve Replicate 2:", phenol_curve_2)
+
+# Bradford assay data extraction
+bradford_values = pd.to_numeric(data.iloc[0:7, 3].values, errors='coerce')  # First seven rows, fourth column
+print("Bradford Values:", bradford_values)
+
+# Extract data for all cell conditions
+undiff_untreated_values = pd.to_numeric(data.iloc[0, 4:10].values, errors='coerce')  # First row, columns 4 to 9
+non_nte_inhibited_undiff_values = pd.to_numeric(data.iloc[1, 4:10].values, errors='coerce')  # Second row, columns 4 to 9
+nte_inhibited_undiff_values = pd.to_numeric(data.iloc[2, 4:10].values, errors='coerce')  # Third row, columns 4 to 9
+diff_untreated_values = pd.to_numeric(data.iloc[3, 4:10].values, errors='coerce')  # Fourth row, columns 4 to 9
+non_nte_inhibited_diff_values = pd.to_numeric(data.iloc[4, 4:10].values, errors='coerce')  # Fifth row, columns 4 to 9
+nte_inhibited_diff_values = pd.to_numeric(data.iloc[5, 4:10].values, errors='coerce')  # Sixth row, columns 4 to 9
+
+# Calculate net NTE activity
+net_nte_undiff = non_nte_inhibited_undiff_values - nte_inhibited_undiff_values
+net_nte_diff = non_nte_inhibited_diff_values - nte_inhibited_diff_values
+
+# Function to plot the phenol concentration curve and return the regression model
+def plot_phenol_curve():
+    concentrations = np.array([0, 0.001, 0.01, 0.1, 0.25, 0.5, 1, 5])
+    averages = (phenol_curve_1 + phenol_curve_2) / 2
+    X = concentrations.reshape(-1, 1)
+    y = averages
+    regressor = LinearRegression()
+    regressor.fit(X, y)
+    predictions = regressor.predict(X)
+    slope_phenol = regressor.coef_[0]
+    intercept_phenol = regressor.intercept_
+    r_squared = regressor.score(X, y)
+    
+    plt.figure(figsize=(10, 5))
+    plt.plot(concentrations, phenol_curve_1, 'o', label='Replicate 1')
+    plt.plot(concentrations, phenol_curve_2, 'o', label='Replicate 2')
+    plt.plot(concentrations, averages, 'o-', label='Averages')
+    plt.plot(concentrations, predictions, 'r-', label=f'Linear Fit: y={slope_phenol:.2f}x + {intercept_phenol:.2f}, R²={r_squared:.2f}')
+    plt.xlabel('Phenol Concentration (mM)')
+    plt.ylabel('Absorbance')
+    plt.title(f'Phenol Concentration Curve - {file_name}')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(f'phenol_concentration_curve_{file_name}.png')
+    plt.close()
+
+    return slope_phenol, intercept_phenol
+
+# Plot the Bradford standard curve
+def plot_bradford_curve():
+    protein_concentrations = np.array([0, 3.125, 6.25, 12.5, 25, 50, 100])
+    X = protein_concentrations.reshape(-1, 1)
+    y = bradford_values
+    regressor = LinearRegression()
+    regressor.fit(X, y)
+    predictions = regressor.predict(X)
+    slope_bradford = regressor.coef_[0]
+    intercept_bradford = regressor.intercept_
+    r_squared = regressor.score(X, y)
+    
+    plt.figure(figsize=(10, 5))
+    plt.plot(protein_concentrations, bradford_values, 'o-', label='Bradford Standard Curve')
+    plt.plot(protein_concentrations, predictions, 'r-', label=f'Linear Fit: y={slope_bradford:.2f}x + {intercept_bradford:.2f}, R²={r_squared:.2f}')
+    plt.xlabel('Protein Concentration (µg/µL)')
+    plt.ylabel('Absorbance')
+    plt.title(f'Bradford Standard Curve - {file_name}')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(f'bradford_standard_curve_{file_name}.png')
+    plt.close()
+
+# Function to calculate phenol liberated using the linear regression formula
+def calculate_phenol_liberated(absorbance, slope, intercept):
+    return (absorbance - intercept) / slope
+
+# Plot phenol liberated data
+def plot_phenol_liberated(phenol_averages, phenol_stds):
+    plt.figure(figsize=(12, 6))
+    bars = plt.bar(conditions, phenol_averages, yerr=phenol_stds, capsize=5, alpha=0.7, color='b')
+    plt.scatter(np.repeat(range(len(conditions)), [len(d) for d in phenol_data]), np.concatenate(phenol_data), color='r', zorder=2)
+    plt.xlabel('Condition')
+    plt.ylabel('Phenol Liberated (µg)')
+    plt.title(f'Average Phenol Liberated - {file_name}')
+
+    # Annotate bars with average values
+    for bar, avg in zip(bars, phenol_averages):
+        yval = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2, yval, round(avg, 2), ha='center', va='bottom')
+
+    plt.tight_layout()
+    plt.savefig(f'phenol_liberated_{file_name}.png')
+    plt.close()
+
+# Plot absorbance data
+def plot_absorbance_data():
+    plt.figure(figsize=(12, 6))
+    absorbance_averages = [np.nanmean(data) for data in absorbance_data]
+    absorbance_stds = [np.nanstd(data) for data in absorbance_data]
+    bars = plt.bar(conditions, absorbance_averages, yerr=absorbance_stds, capsize=5, alpha=0.7, color='b')
+    plt.scatter(np.repeat(range(len(conditions)), [len(d) for d in absorbance_data]), np.concatenate(absorbance_data), color='r', zorder=2)
+    plt.xlabel('Condition')
+    plt.ylabel('Absorbance')
+    plt.title(f'Average Absorbance - {file_name}')
+
+    # Annotate bars with average values
+    for bar, avg in zip(bars, absorbance_averages):
+        yval = bar.get_height()
+        if np.isfinite(avg):
+            plt.text(bar.get_x() + bar.get_width()/2, yval, round(avg, 2), ha='center', va='bottom')
+
+    plt.tight_layout()
+    plt.savefig(f'absorbance_{file_name}.png')
+    plt.close()
+
+# Phenol data for each condition
+phenol_data = [
+    undiff_untreated_values,
+    non_nte_inhibited_undiff_values,
+    nte_inhibited_undiff_values,
+    diff_untreated_values,
+    non_nte_inhibited_diff_values,
+    nte_inhibited_diff_values
+]
+
+absorbance_data = [
+    undiff_untreated_values,
+    non_nte_inhibited_undiff_values,
+    nte_inhibited_undiff_values,
+    diff_untreated_values,
+    non_nte_inhibited_diff_values,
+    nte_inhibited_diff_values
+]
+
+conditions = ['Undiff Untreated', 'Non-NTE Inhibited Undiff', 'NTE Inhibited Undiff',
+              'Diff Untreated', 'Non-NTE Inhibited Diff', 'NTE Inhibited Diff']
+
+# Call the plot functions and calculate phenol liberated
+slope_phenol, intercept_phenol = plot_phenol_curve()
+plot_bradford_curve()
+
+# Calculate phenol liberated for each condition
+phenol_liberated_undiff_untreated = calculate_phenol_liberated(undiff_untreated_values, slope_phenol, intercept_phenol)
+phenol_liberated_non_nte_inhibited_undiff = calculate_phenol_liberated(non_nte_inhibited_undiff_values, slope_phenol, intercept_phenol)
+phenol_liberated_nte_inhibited_undiff = calculate_phenol_liberated(nte_inhibited_undiff_values, slope_phenol, intercept_phenol)
+phenol_liberated_diff_untreated = calculate_phenol_liberated(diff_untreated_values, slope_phenol, intercept_phenol)
+phenol_liberated_non_nte_inhibited_diff = calculate_phenol_liberated(non_nte_inhibited_diff_values, slope_phenol, intercept_phenol)
+phenol_liberated_nte_inhibited_diff = calculate_phenol_liberated(nte_inhibited_diff_values, slope_phenol, intercept_phenol)
+
+# Calculate averages and standard deviations for phenol liberated
+phenol_data = [
+    phenol_liberated_undiff_untreated,
+    phenol_liberated_non_nte_inhibited_undiff,
+    phenol_liberated_nte_inhibited_undiff,
+    phenol_liberated_diff_untreated,
+    phenol_liberated_non_nte_inhibited_diff,
+    phenol_liberated_nte_inhibited_diff
+]
+
+phenol_averages = [np.nanmean(data) for data in phenol_data]
+phenol_stds = [np.nanstd(data) for data in phenol_data]
+
+plot_phenol_liberated(phenol_averages, phenol_stds)
+plot_absorbance_data()
